@@ -63,8 +63,25 @@
   .presets button.selected small { color: #555; }
 
   .custom { display: flex; align-items: center; gap: 10px; }
-  .custom span { font-size: 32px; font-weight: 700; color: var(--muted); }
-  .custom .unit { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; margin-left: 2px; }
+  .custom .unit { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--muted); margin: 0 4px; }
+  .step {
+    width: 64px; height: 64px; flex: none;
+    background: var(--panel); color: #fff;
+    border: 1px solid var(--line); border-radius: 12px;
+    font-size: 34px; font-weight: 500; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: manipulation;
+  }
+  .step:active { background: #fff; color: #000; }
+  .secrow { margin-top: 10px; }
+  .secrow .step { width: 44px; height: 44px; font-size: 24px; border-radius: 10px; }
+  .secrow .num { width: 72px; font-size: 20px; padding: 8px 4px; }
+  .linkbtn {
+    margin-top: 10px; padding: 4px 0;
+    background: none; border: none; color: var(--muted);
+    font-size: 14px; font-weight: 500;
+  }
+  .linkbtn:active { color: #fff; }
   .num {
     width: 104px; padding: 12px 8px; text-align: center; font-size: 30px;
     -webkit-user-select: text; user-select: text;
@@ -101,6 +118,7 @@
     .presets button small { font-size: 9px; }
     .label { margin: 20px 0 8px; font-size: 12px; }
     .num { width: 88px; font-size: 26px; padding: 10px 6px; }
+    .step { width: 56px; height: 56px; font-size: 30px; }
     .warns { grid-template-columns: 1fr; gap: 8px; }
     .warn .num { width: 68px; font-size: 20px; }
     #start { margin-top: 24px; padding: 18px 0; font-size: 22px; }
@@ -110,6 +128,7 @@
     .label { margin: 14px 0 6px; }
     .presets button { padding: 8px 0; font-size: 20px; }
     .num { padding: 6px; font-size: 22px; }
+    .step { width: 46px; height: 46px; font-size: 26px; }
     .warn { padding: 6px 12px; }
     .warn .num { font-size: 18px; padding: 4px; }
     #start { margin-top: 16px; padding: 12px 0; font-size: 20px; }
@@ -177,10 +196,18 @@
 
     <div class="label">Custom</div>
     <div class="custom">
-      <input id="min" class="num" type="number" inputmode="numeric" min="0" max="99" step="1" aria-label="Minutes">
-      <span>:</span>
-      <input id="sec" class="num" type="number" inputmode="numeric" min="0" max="59" step="1" aria-label="Seconds">
+      <button type="button" class="step" id="minDown" aria-label="One minute less">&minus;</button>
+      <input id="min" class="num" type="number" inputmode="numeric" min="1" max="99" step="1" aria-label="Minutes">
+      <button type="button" class="step" id="minUp" aria-label="One minute more">+</button>
+      <span class="unit">min</span>
     </div>
+    <div class="custom secrow" id="secRow" hidden>
+      <button type="button" class="step" id="secDown" aria-label="Fifteen seconds less">&minus;</button>
+      <input id="sec" class="num" type="number" inputmode="numeric" min="0" max="59" step="1" aria-label="Seconds">
+      <button type="button" class="step" id="secUp" aria-label="Fifteen seconds more">+</button>
+      <span class="unit">sec</span>
+    </div>
+    <button type="button" class="linkbtn" id="secToggle">+ Add seconds</button>
 
     <div class="label">Warnings (minutes remaining)</div>
     <div class="warns">
@@ -219,13 +246,17 @@
 
   const PRESETS = [7, 10, 12, 15, 20];                  // minutes
   const DEFAULTS = { min: 12, sec: 0, yellowAt: 3, redAt: 1 };
+  const MIN_MAX = 99;
+  const SEC_STEP = 15;
   const STORE_KEY = 'talk-timer-settings-v1';
   const CONTROLS_HIDE_MS = 3000;
 
   const $ = (id) => document.getElementById(id);
   const ui = {
     setup: $('setup'), run: $('run'), presets: $('presets'),
-    min: $('min'), sec: $('sec'), yellowAt: $('yellowAt'), redAt: $('redAt'),
+    min: $('min'), minDown: $('minDown'), minUp: $('minUp'),
+    sec: $('sec'), secDown: $('secDown'), secUp: $('secUp'), secRow: $('secRow'), secToggle: $('secToggle'),
+    yellowAt: $('yellowAt'), redAt: $('redAt'),
     start: $('start'), error: $('error'),
     clock: $('clock'), status: $('status'),
     pauseBtn: $('pauseBtn'), restartBtn: $('restartBtn'), setupBtn: $('setupBtn'), fsBtn: $('fsBtn'),
@@ -251,14 +282,15 @@
     b.dataset.min = m;
     b.innerHTML = `${m}<small>MIN</small>`;
     b.addEventListener('click', () => {
-      ui.min.value = m; ui.sec.value = '00';
+      ui.min.value = m;
+      setSecondsOpen(false);
       markPreset();
     });
     ui.presets.appendChild(b);
   });
 
   function markPreset() {
-    const m = Number(ui.min.value), s = Number(ui.sec.value);
+    const m = Number(ui.min.value), s = secondsValue();
     for (const b of ui.presets.children) {
       b.classList.toggle('selected', s === 0 && Number(b.dataset.min) === m);
     }
@@ -266,24 +298,71 @@
 
   function fillSetup() {
     ui.min.value = settings.min;
-    ui.sec.value = String(settings.sec).padStart(2, '0');
+    ui.sec.value = pad2(settings.sec || 0);
+    setSecondsOpen((settings.sec || 0) > 0);
     ui.yellowAt.value = settings.yellowAt;
     ui.redAt.value = settings.redAt;
     markPreset();
   }
 
   ui.min.addEventListener('input', markPreset);
+
+  // Seconds are a secondary option, hidden until requested.
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const secondsOpen = () => !ui.secRow.hidden;
+  const secondsValue = () => secondsOpen() ? Math.floor(Number(ui.sec.value) || 0) : 0;
+  const minMinutes = () => secondsOpen() ? 0 : 1;
+  function setSecondsOpen(open) {
+    ui.secRow.hidden = !open;
+    ui.secToggle.textContent = open ? 'Remove seconds' : '+ Add seconds';
+    if (!open) {
+      ui.sec.value = '00';
+      if (Number(ui.min.value) < 1) ui.min.value = 1;
+    }
+    markPreset();
+  }
+  ui.secToggle.addEventListener('click', () => setSecondsOpen(!secondsOpen()));
   ui.sec.addEventListener('input', markPreset);
   ui.sec.addEventListener('blur', () => {
-    if (ui.sec.value !== '') ui.sec.value = String(Math.min(59, Math.max(0, Math.floor(Number(ui.sec.value))))).padStart(2, '0');
+    ui.sec.value = pad2(Math.min(59, Math.max(0, Math.floor(Number(ui.sec.value) || 0))));
   });
+
+  // Stepper buttons. Holding a button repeats the step.
+  function stepMinutes(delta) {
+    const cur = Math.floor(Number(ui.min.value) || 0);
+    ui.min.value = Math.min(MIN_MAX, Math.max(minMinutes(), cur + delta));
+    markPreset();
+  }
+  function stepSeconds(delta) {
+    const cur = Math.floor(Number(ui.sec.value) || 0);
+    ui.sec.value = pad2(Math.min(59, Math.max(0, cur + delta)));
+    markPreset();
+  }
+  function bindStepper(btn, step) {
+    let holdTimer = null, repeatTimer = null;
+    const stop = () => { clearTimeout(holdTimer); clearInterval(repeatTimer); };
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      step();
+      stop();
+      holdTimer = setTimeout(() => { repeatTimer = setInterval(step, 90); }, 450);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, stop));
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); step(); }
+    });
+  }
+  bindStepper(ui.minDown, () => stepMinutes(-1));
+  bindStepper(ui.minUp, () => stepMinutes(+1));
+  bindStepper(ui.secDown, () => stepSeconds(-SEC_STEP));
+  bindStepper(ui.secUp, () => stepSeconds(+SEC_STEP));
 
   function readSetup() {
     const min = Math.floor(Number(ui.min.value) || 0);
-    const sec = Math.floor(Number(ui.sec.value) || 0);
+    const sec = secondsValue();
     const yellowAt = Math.max(0, Number(ui.yellowAt.value) || 0);
     const redAt = Math.max(0, Number(ui.redAt.value) || 0);
-    if (min < 0 || min > 99 || sec < 0 || sec > 59) return { error: 'Use 0–99 minutes and 0–59 seconds.' };
+    if (min < 0 || min > MIN_MAX || sec < 0 || sec > 59) return { error: 'Use 0–99 minutes and 0–59 seconds.' };
     if (min * 60 + sec <= 0) return { error: 'Set a length greater than zero.' };
     if (redAt > yellowAt && yellowAt > 0) return { error: 'Red warning should come after yellow (smaller number).' };
     return { min, sec, yellowAt, redAt };
@@ -369,7 +448,7 @@
   function reset() {
     clearInterval(tickId);
     running = false; finished = false; started = false;
-    durationMs = (settings.min * 60 + settings.sec) * 1000;
+    durationMs = (settings.min * 60 + (settings.sec || 0)) * 1000;
     remainingMs = durationMs;
     lastText = ''; lastPhase = '';
     render();
