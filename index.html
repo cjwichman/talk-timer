@@ -158,7 +158,7 @@
   #run.paused #clock, #run.paused #over { opacity: .55; }
   #run.done #clock { font-size: min(27vw, 48vh); }
 
-  /* Time elapsed since 0:00 (Q&A or overrun). */
+  /* Extra time: elapsed since 0:00 (Q&A or overrun). */
   #over {
     margin-top: 2vh; text-align: center;
     font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1;
@@ -252,7 +252,7 @@
 <section id="run" class="screen">
   <div id="status">TAP TO START</div>
   <div id="clock">12:00</div>
-  <div id="over" hidden><span class="lbl">SINCE 0:00</span><span id="overTime">+0:00</span></div>
+  <div id="over" hidden><span class="lbl">EXTRA TIME</span><span id="overTime">+0:00</span></div>
   <div id="controls">
     <button id="pauseBtn">Start</button>
     <button id="restartBtn">Restart</button>
