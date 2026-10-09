@@ -4,7 +4,8 @@ Full-screen countdown timer for conference presentations. Runs in any modern bro
 
 - Large white digits on black.
 - Background turns yellow at 3:00 remaining and red at 1:00 remaining (both adjustable).
-- At 0:00 the display stops and flashes red/black.
+- At 0:00 the display flashes red/black for 5 seconds, then holds solid red at 0:00.
+- A smaller counter appears under 0:00 and counts the time elapsed since the talk ended (for Q&A or overrun). Pause and restart apply to it as well.
 - Presets of 7, 10, 12, 15, and 20 minutes, plus a custom minute setting with −/+ buttons (hold to repeat). An optional seconds setting (15-second steps, or type any value) sits behind **+ Add seconds**.
 - Screen stays awake while the timer screen is open (Screen Wake Lock API, iOS/iPadOS 16.4+ and current desktop browsers).
 - Works offline after the first load. Settings persist between sessions.

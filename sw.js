@@ -1,6 +1,6 @@
 // Service worker: network-first with cache fallback, so the timer works offline
 // after the first visit and still picks up new versions when online.
-const CACHE = 'talk-timer-v1';
+const CACHE = 'talk-timer-v2';
 const ASSETS = [
   './',
   './index.html',

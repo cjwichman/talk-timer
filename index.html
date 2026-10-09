@@ -137,13 +137,14 @@
 
   /* ---------- Run screen ---------- */
   #run {
-    align-items: center; justify-content: center;
+    flex-direction: column; align-items: center; justify-content: center;
     background: #000; color: #fff;
     transition: background-color .35s, color .35s;
   }
   #run.yellow { background: var(--yellow); color: #000; }
   #run.red    { background: var(--red);    color: #fff; }
-  #run.done   { animation: flash 1s steps(1, end) infinite; }
+  /* Flash for 5 seconds at 0:00, then hold solid red. */
+  #run.done   { background: var(--red); color: #fff; animation: flash 1s steps(1, end) 5; }
   @keyframes flash {
     0%   { background: var(--red); color: #fff; }
     50%  { background: #000;       color: var(--red); }
@@ -154,7 +155,25 @@
     font-size: min(31vw, 62vh); line-height: 1; letter-spacing: -0.02em;
     transition: opacity .2s;
   }
-  #run.paused #clock { opacity: .55; }
+  #run.paused #clock, #run.paused #over { opacity: .55; }
+  #run.done #clock { font-size: min(27vw, 48vh); }
+
+  /* Time elapsed since 0:00 (Q&A or overrun). */
+  #over {
+    margin-top: 2vh; text-align: center;
+    font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1;
+    transition: opacity .2s;
+  }
+  #over .lbl {
+    display: block; margin-bottom: .6vh;
+    font-size: clamp(12px, 1.8vw, 20px); letter-spacing: .28em; opacity: .8;
+  }
+  #overTime { font-size: min(11vw, 18vh); }
+  @media (max-height: 500px) {
+    #run.done #clock { font-size: min(27vw, 36vh); }
+    #overTime { font-size: min(11vw, 14vh); }
+    #run { padding-bottom: 56px; }
+  }
 
   #status {
     position: absolute; left: 0; right: 0; top: calc(22px + env(safe-area-inset-top));
@@ -165,9 +184,9 @@
   #run.paused #status { opacity: .75; }
 
   #controls {
-    position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom));
+    position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
-    display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;
     width: max-content; max-width: calc(100% - 32px);
     opacity: 0; pointer-events: none; transition: opacity .25s;
   }
@@ -175,13 +194,14 @@
   #controls button {
     background: rgba(0,0,0,.6); color: #fff;
     border: 1px solid rgba(255,255,255,.35); border-radius: 999px;
-    padding: 14px 22px; font-size: 17px; font-weight: 600; white-space: nowrap;
+    padding: 20px 36px; font-size: 22px; font-weight: 600; white-space: nowrap;
+    min-width: 140px;
     -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   }
   #run.yellow #controls button { background: rgba(0,0,0,.85); }
   @media (max-width: 480px), (max-height: 500px) {
-    #controls { gap: 8px; }
-    #controls button { padding: 10px 16px; font-size: 15px; }
+    #controls { gap: 10px; }
+    #controls button { padding: 14px 22px; font-size: 18px; min-width: 110px; }
   }
 </style>
 </head>
@@ -232,6 +252,7 @@
 <section id="run" class="screen">
   <div id="status">TAP TO START</div>
   <div id="clock">12:00</div>
+  <div id="over" hidden><span class="lbl">SINCE 0:00</span><span id="overTime">+0:00</span></div>
   <div id="controls">
     <button id="pauseBtn">Start</button>
     <button id="restartBtn">Restart</button>
@@ -258,7 +279,7 @@
     sec: $('sec'), secDown: $('secDown'), secUp: $('secUp'), secRow: $('secRow'), secToggle: $('secToggle'),
     yellowAt: $('yellowAt'), redAt: $('redAt'),
     start: $('start'), error: $('error'),
-    clock: $('clock'), status: $('status'),
+    clock: $('clock'), status: $('status'), over: $('over'), overTime: $('overTime'),
     pauseBtn: $('pauseBtn'), restartBtn: $('restartBtn'), setupBtn: $('setupBtn'), fsBtn: $('fsBtn'),
   };
 
@@ -381,9 +402,11 @@
   // ---------- Timer ----------
   // The countdown stores a wall-clock end time, so the display stays correct
   // if the browser throttles timers or the device briefly sleeps.
+  // remainingMs goes negative after 0:00. The negative part is the elapsed
+  // time shown in the secondary "since 0:00" counter.
   let durationMs = 0, remainingMs = 0, endTime = 0;
   let running = false, finished = false, started = false;
-  let tickId = null, hideTimer = null, lastText = '', lastPhase = '';
+  let tickId = null, hideTimer = null, lastText = '', lastOverText = '', lastPhase = '';
 
   function format(ms) {
     const total = Math.ceil(ms / 1000);
@@ -399,9 +422,20 @@
     return 'normal';
   }
 
+  function formatUp(ms) {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60), s = total % 60;
+    return `+${m}:${String(s).padStart(2, '0')}`;
+  }
+
   function render() {
-    const text = format(remainingMs);
+    const text = format(Math.max(0, remainingMs));
     if (text !== lastText) { ui.clock.textContent = text; lastText = text; }
+    ui.over.hidden = !finished;
+    if (finished) {
+      const overText = formatUp(-remainingMs);
+      if (overText !== lastOverText) { ui.overTime.textContent = overText; lastOverText = overText; }
+    }
     const phase = phaseFor(remainingMs);
     if (phase !== lastPhase) {
       ui.run.classList.toggle('yellow', phase === 'yellow');
@@ -409,20 +443,19 @@
       ui.run.classList.toggle('done', phase === 'done');
       lastPhase = phase;
     }
-    ui.run.classList.toggle('paused', !running && !finished);
+    ui.run.classList.toggle('paused', !running);
     ui.status.textContent = started ? 'PAUSED' : 'TAP TO START';
     ui.pauseBtn.textContent = running ? 'Pause' : (started ? 'Resume' : 'Start');
-    ui.pauseBtn.hidden = finished;
   }
 
   function tick() {
-    remainingMs = Math.max(0, endTime - Date.now());
-    if (remainingMs <= 0) finish();
+    remainingMs = endTime - Date.now();
+    finished = remainingMs <= 0;
     render();
   }
 
   function start() {
-    if (running || finished) return;
+    if (running) return;
     endTime = Date.now() + remainingMs;
     running = true; started = true;
     tickId = setInterval(tick, 100);
@@ -432,17 +465,11 @@
 
   function pause() {
     if (!running) return;
-    remainingMs = Math.max(0, endTime - Date.now());
+    remainingMs = endTime - Date.now();
     running = false;
     clearInterval(tickId);
     render();
     showControls(false);
-  }
-
-  function finish() {
-    running = false; finished = true;
-    clearInterval(tickId);
-    remainingMs = 0;
   }
 
   function reset() {
@@ -450,7 +477,7 @@
     running = false; finished = false; started = false;
     durationMs = (settings.min * 60 + (settings.sec || 0)) * 1000;
     remainingMs = durationMs;
-    lastText = ''; lastPhase = '';
+    lastText = ''; lastOverText = ''; lastPhase = '';
     render();
     showControls(false);
   }
@@ -472,7 +499,6 @@
 
   ui.run.addEventListener('click', (e) => {
     if (e.target.closest('#controls')) return;
-    if (finished) { showControls(false); return; }
     toggle();
     if (running) showControls(true);
   });
@@ -503,7 +529,7 @@
       if (e.key === 'Enter') ui.start.click();
       return;
     }
-    if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); if (!finished) toggle(); }
+    if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); toggle(); }
     else if (e.key === 'r' || e.key === 'R') reset();
     else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
     else if (e.key === 'Escape' && !isFullscreen()) showSetup();
